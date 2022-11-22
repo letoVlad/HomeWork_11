@@ -1,10 +1,20 @@
 public class Book {
     private int publicateYear;
     private Author author;
+    private String nameBook;
 
-    public Book(int publicationYear, Author author) {
+    public String getNameBook() {
+        return nameBook;
+    }
+
+    public void setNameBook(String nameBook) {
+        this.nameBook = nameBook;
+    }
+
+    public Book(String nameBook, int publicationYear, Author author) {
         this.publicateYear = publicationYear;
         this.author = author;
+        this.nameBook = nameBook;
     }
 
     public int getPublicateYear() {
@@ -27,8 +37,8 @@ public class Book {
         this.author = author;
     }
 
-    public boolean info() {
-        System.out.println(getAuthorName() + " " + getAuthorLastName() + " " + getPublicateYear());
-        return false;
+    public String info() {
+        return (getAuthorName() + " " + getAuthorLastName() + " " + getPublicateYear()+ " " + getNameBook());
+
     }
 }
