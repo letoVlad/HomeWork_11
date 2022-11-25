@@ -7,5 +7,6 @@ public class Main {
         System.out.println(theLordOfTheRing.info());
         System.out.println(harryPotter.getPublicateYear());
         harryPotter.setPublicateYear(2222);
+        System.out.println(harryPotter);
     }
 }
