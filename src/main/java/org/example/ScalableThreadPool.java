@@ -62,7 +62,7 @@ public class ScalableThreadPool implements ThreadPool {
         }
     }
 
-    private long getActiveThreadCount() {
+    public long getActiveThreadCount() {
         return Arrays.stream(threads).filter(Thread::isAlive).count();
     }
 }
