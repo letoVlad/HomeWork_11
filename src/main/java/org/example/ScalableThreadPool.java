@@ -1,68 +1,65 @@
 package org.example;
 
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+
 
 public class ScalableThreadPool implements ThreadPool {
     private final int minAmountOfThreads;
     private final int maxAmountOfThreads;
-    private MyThread[] threads;
-    private BlockingQueue<Runnable> blockingQueue = new LinkedBlockingQueue<>();
-
+    private final List<MyThread> threads = new ArrayList<>();
+    private final BlockingQueue<Runnable> blockingQueue = new LinkedBlockingQueue<>();
 
     public ScalableThreadPool(int minAmountOfThreads, int maxAmountOfThreads) {
         this.minAmountOfThreads = minAmountOfThreads;
         this.maxAmountOfThreads = maxAmountOfThreads;
-        this.threads = new MyThread[minAmountOfThreads];
-        this.blockingQueue = new LinkedBlockingQueue<>();
     }
-
 
     @Override
     public void start() {
         for (int i = 0; i < minAmountOfThreads; i++) {
-            threads[i] = new MyThread(() -> {
-                while (true) {
-                    try {
-                        Runnable task = blockingQueue.take();
-                        task.run();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            });
-            threads[i].start();
+            addNewThread();
         }
     }
 
     @Override
     public void execute(Runnable runnable) throws InterruptedException {
-        blockingQueue.put(runnable);
+        boolean added = blockingQueue.offer(runnable, 1, TimeUnit.SECONDS);
+        if (!added) {
+            throw new RejectedExecutionException("Очередь переполнена, задача не добавлена!");
+        }
+        maybeAddThread();
+    }
 
-        if (Arrays.stream(threads).allMatch(MyThread::isFlag)) {
-            if (getActiveThreadCount() < maxAmountOfThreads) {
-                MyThread[] newThreads = Arrays.copyOf(threads, threads.length + 1);
-                MyThread newThread = new MyThread(() -> {
-                    while (true) {
-                        try {
-                            Runnable task = blockingQueue.take();
-                            task.run();
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                });
-                newThreads[threads.length] = newThread;
-                threads = newThreads;
-                newThread.start();
-            }
+
+    private void maybeAddThread() {
+        long activeThreads = threads.stream()
+                .filter(t -> t.getState() != Thread.State.WAITING)
+                .count();
+
+        if (activeThreads == threads.size() && threads.size() < maxAmountOfThreads) {
+            addNewThread();
         }
     }
 
-    public long getActiveThreadCount() {
-        return Arrays.stream(threads).filter(Thread::isAlive).count();
+    private void addNewThread() {
+        MyThread newThread = new MyThread(() -> {
+            while (true) {
+                try {
+                    Runnable task = blockingQueue.take();
+                    task.run();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
+        threads.add(newThread);
+        newThread.start();
     }
+
 }

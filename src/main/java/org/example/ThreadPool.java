@@ -1,6 +1,7 @@
 package org.example;
 
 public interface ThreadPool {
+
     // запускает потоки. Потоки бездействуют, до тех пор пока не появится новое задание в очереди (см. execute)
     void start() throws InterruptedException;
 
