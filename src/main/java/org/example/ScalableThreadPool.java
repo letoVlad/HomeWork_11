@@ -2,17 +2,18 @@ package org.example;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class ScalableThreadPool implements ThreadPool {
     private final int minAmountOfThreads;
     private final int maxAmountOfThreads;
-    private final List<MyThread> threads = new ArrayList<>();
+    private final List<MyThread> threads = new CopyOnWriteArrayList<>();
     private final BlockingQueue<Runnable> blockingQueue = new LinkedBlockingQueue<>();
+    private final AtomicInteger activeThreads = new AtomicInteger(0);
+    private volatile boolean isShutdown = false;
+
 
     public ScalableThreadPool(int minAmountOfThreads, int maxAmountOfThreads) {
         this.minAmountOfThreads = minAmountOfThreads;
@@ -28,13 +29,15 @@ public class ScalableThreadPool implements ThreadPool {
 
     @Override
     public void execute(Runnable runnable) throws InterruptedException {
+        if (runnable == null) {
+            throw new IllegalArgumentException("Задача не может быть null!");
+        }
         boolean added = blockingQueue.offer(runnable, 1, TimeUnit.SECONDS);
         if (!added) {
             throw new RejectedExecutionException("Очередь переполнена, задача не добавлена!");
         }
         maybeAddThread();
     }
-
 
     private void maybeAddThread() {
         long activeThreads = threads.stream()
@@ -50,8 +53,18 @@ public class ScalableThreadPool implements ThreadPool {
         MyThread newThread = new MyThread(() -> {
             while (true) {
                 try {
-                    Runnable task = blockingQueue.take();
-                    task.run();
+                    Runnable task = blockingQueue.poll(1, TimeUnit.SECONDS);
+                    if (task != null) {
+                        activeThreads.incrementAndGet();
+                        try {
+                            task.run();
+                        } finally {
+                            activeThreads.decrementAndGet();
+                        }
+                    } else if (isShutdown && blockingQueue.isEmpty()) {
+                        //если очередь пуста и пул завершен, выходим из цикла
+                        break;
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -61,5 +74,24 @@ public class ScalableThreadPool implements ThreadPool {
         threads.add(newThread);
         newThread.start();
     }
+
+    /*
+    Завершает пул потоков и дожидается выполнение всех задач.
+     */
+    public void shutdownAndWait() {
+        isShutdown = true;
+        while (!blockingQueue.isEmpty() || activeThreads.get() > 0) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        threads.forEach(Thread::interrupt);
+        threads.clear();
+    }
+
 
 }
