@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-
 public class ScalableThreadPool implements ThreadPool {
     private final int minAmountOfThreads;
     private final int maxAmountOfThreads;
@@ -60,9 +59,14 @@ public class ScalableThreadPool implements ThreadPool {
                             task.run();
                         } finally {
                             activeThreads.decrementAndGet();
+                            synchronized (this) {
+                                notifyAll();
+                            }
                         }
                     } else if (isShutdown && blockingQueue.isEmpty()) {
-                        //если очередь пуста и пул завершен, выходим из цикла
+                        synchronized (this) {
+                            notifyAll();
+                        }
                         break;
                     }
                 } catch (InterruptedException e) {
@@ -80,18 +84,20 @@ public class ScalableThreadPool implements ThreadPool {
      */
     public void shutdownAndWait() {
         isShutdown = true;
-        while (!blockingQueue.isEmpty() || activeThreads.get() > 0) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+
+        synchronized (this) {
+            while (!blockingQueue.isEmpty() || activeThreads.get() > 0) {
+                try {
+                    wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         }
 
         threads.forEach(Thread::interrupt);
         threads.clear();
     }
-
 
 }

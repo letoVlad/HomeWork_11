@@ -26,9 +26,9 @@ public class Main {
 //
 //    }
 
-        FixedThreadPool threadPool = new FixedThreadPool( 5);
+        FixedThreadPool threadPool = new FixedThreadPool(5);
 
-        try {
+
             threadPool.start();
 
             for (int i = 0; i < 10; i++) {
@@ -36,19 +36,17 @@ public class Main {
                 threadPool.execute(() -> {
                     System.out.println(Thread.currentThread().getName() + " выполняет задачу " + taskId);
                     try {
-                        Thread.sleep(500);
+                        Thread.sleep(5000);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
                 });
             }
 
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } finally {
             threadPool.shutdown();
+            System.out.println("Конец");
         }
-    }
+
+
 
 }

@@ -3,11 +3,15 @@ package org.example;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class FixedThreadPool implements ThreadPool {
     private final int amountOfThreads;
-    private BlockingQueue<Runnable> blockingQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<Runnable> blockingQueue = new LinkedBlockingQueue<>();
     private final List<Thread> threads = new CopyOnWriteArrayList<>();
+    private volatile boolean isShutdown = false;
+    private final AtomicInteger activeThreads = new AtomicInteger(0);
+
 
     public FixedThreadPool(int amountOfThreads) {
         this.amountOfThreads = amountOfThreads;
@@ -16,19 +20,39 @@ public class FixedThreadPool implements ThreadPool {
     @Override
     public void start() {
         for (int i = 0; i < amountOfThreads; i++) {
-            Thread newThread = new Thread(() -> {
-                while (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        Runnable task = blockingQueue.take();
-                        task.run();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            });
-            threads.add(newThread);
-            newThread.start();
+            addNewThread();
         }
+    }
+
+    private void addNewThread() {
+        Thread newThread = new Thread(() -> {
+            while (true) {
+                try {
+                    Runnable task = blockingQueue.poll(1, TimeUnit.SECONDS);
+                    if (task != null) {
+                        activeThreads.incrementAndGet();
+                        try {
+                            task.run();
+                        } finally {
+                            activeThreads.decrementAndGet();
+                            synchronized (this) {
+                                notifyAll();
+                            }
+                        }
+                    } else if (isShutdown && blockingQueue.isEmpty()) {
+                        synchronized (this) {
+                            notifyAll();
+                        }
+                        break;
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
+        threads.add(newThread);
+        newThread.start();
     }
 
     @Override
@@ -43,9 +67,21 @@ public class FixedThreadPool implements ThreadPool {
     }
 
     public void shutdown() {
-        for (Thread thread : threads) {
-            thread.interrupt();
+        isShutdown = true;
+
+        synchronized (this) {
+            while (!blockingQueue.isEmpty() || activeThreads.get() > 0) {
+                try {
+                    wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
+
+        threads.forEach(Thread::interrupt);
+        threads.clear();
     }
 }
 
